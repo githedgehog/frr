@@ -214,6 +214,9 @@ enum dplane_op_e {
 
 	/* Source address for SRv6 encapsulation */
 	DPLANE_OP_SRV6_ENCAP_SRCADDR_SET,
+
+	/* Refresh provider */
+	DPLANE_OP_PROVIDER_REFRESH
 };
 
 /* Operational status of Bridge Ports */
