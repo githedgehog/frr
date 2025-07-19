@@ -5277,7 +5277,9 @@ static void rib_process_dplane_results(struct event *thread)
 				zebra_vlan_dplane_result(ctx);
 				break;
 			case DPLANE_OP_PROVIDER_REFRESH:
-			    break;
+				zlog_debug("Got request to refresh from provider %u",
+					   dplane_ctx_get_provider(ctx));
+				break;
 			} /* Dispatch by op code */
 
 			dplane_ctx_fini(&ctx);

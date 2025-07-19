@@ -7801,6 +7801,18 @@ void zebra_dplane_startup_stage(struct zebra_ns *zns,
 
 	dplane_provider_enqueue_to_zebra(ctx);
 }
+
+void zebra_dplane_provider_refresh(uint32_t zd_provider)
+{
+	struct zebra_dplane_ctx *ctx = dplane_ctx_alloc();
+
+	ctx->zd_op = DPLANE_OP_PROVIDER_REFRESH;
+	ctx->zd_status = ZEBRA_DPLANE_REQUEST_QUEUED;
+	ctx->zd_provider = zd_provider;
+
+	dplane_provider_enqueue_to_zebra(ctx);
+}
+
 /*
  * Initialize the dataplane module at startup; called by zebra rib_init()
  */
