@@ -5089,6 +5089,8 @@ static void rib_process_dplane_results(struct event *event)
 				break;
 
 			case DPLANE_OP_PROVIDER_REFRESH:
+				zlog_debug("Got request to refresh from provider %u",
+					dplane_ctx_get_provider(ctx));
 				break;
 
 			} /* Dispatch by op code */
