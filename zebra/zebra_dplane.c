@@ -424,6 +424,10 @@ struct zebra_dplane_ctx {
 	char zd_ifname[IFNAMSIZ];
 	ifindex_t zd_ifindex;
 
+	/* refresh bitmap. Each bit represents a type of state that a provider requests
+	 * refresh for. See DPLANE_REFRESH_* */
+	uint32_t refresh_flags;
+
 	/* Support info for different kinds of updates */
 	union {
 		struct dplane_route_info rinfo;
@@ -7802,13 +7806,14 @@ void zebra_dplane_startup_stage(struct zebra_ns *zns,
 	dplane_provider_enqueue_to_zebra(ctx);
 }
 
-void zebra_dplane_provider_refresh(uint32_t zd_provider)
+void zebra_dplane_provider_refresh(uint32_t zd_provider, uint32_t refresh_flags)
 {
 	struct zebra_dplane_ctx *ctx = dplane_ctx_alloc();
 
 	ctx->zd_op = DPLANE_OP_PROVIDER_REFRESH;
 	ctx->zd_status = ZEBRA_DPLANE_REQUEST_QUEUED;
 	ctx->zd_provider = zd_provider;
+	ctx->refresh_flags = refresh_flags;
 
 	dplane_provider_enqueue_to_zebra(ctx);
 }
