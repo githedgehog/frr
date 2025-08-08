@@ -688,14 +688,14 @@ static enum zebra_dplane_result lsp_update_internal(struct zebra_lsp *lsp,
 						    enum dplane_op_e op);
 static enum zebra_dplane_result pw_update_internal(struct zebra_pw *pw,
 						   enum dplane_op_e op);
-static enum zebra_dplane_result intf_addr_update_internal(
-	const struct interface *ifp, const struct connected *ifc,
-	enum dplane_op_e op);
-static enum zebra_dplane_result mac_update_common(enum dplane_op_e op, const struct interface *ifp,
-						  const struct interface *br_ifp, vlanid_t vid,
-						  const struct ethaddr *mac, vni_t vni,
-						  struct ipaddr *vtep_ip, bool sticky,
-						  uint32_t nhg_id, uint32_t update_flags);
+static enum zebra_dplane_result intf_addr_update_internal(const struct interface *ifp,
+							  const struct connected *ifc,
+							  enum dplane_op_e op, bool skip_kernel);
+static enum zebra_dplane_result
+mac_update_common(enum dplane_op_e op, const struct interface *ifp,
+		  const struct interface *br_ifp, vlanid_t vid,
+		  const struct ethaddr *mac, vni_t vni, struct ipaddr *vtep_ip,
+		  bool sticky, uint32_t nhg_id, uint32_t update_flags);
 static enum zebra_dplane_result
 neigh_update_internal(enum dplane_op_e op, const struct interface *ifp,
 		      const void *link, int link_family,
@@ -5384,8 +5384,19 @@ enum zebra_dplane_result dplane_intf_addr_set(const struct interface *ifp,
 	}
 #endif
 
-	return intf_addr_update_internal(ifp, ifc, DPLANE_OP_ADDR_INSTALL);
+	return intf_addr_update_internal(ifp, ifc, DPLANE_OP_ADDR_INSTALL, false);
 }
+
+/*
+ * Enqueue interface address refresh for the dataplane. This is identical to
+ * dplane_intf_addr_set(), except that the ctx is flagged with skip kernel.
+ */
+enum zebra_dplane_result dplane_intf_addr_refresh(const struct interface *ifp,
+						  const struct connected *ifc)
+{
+	return intf_addr_update_internal(ifp, ifc, DPLANE_OP_ADDR_INSTALL, true);
+}
+
 
 /*
  * Enqueue interface address remove/uninstall for the dataplane.
@@ -5393,12 +5404,12 @@ enum zebra_dplane_result dplane_intf_addr_set(const struct interface *ifp,
 enum zebra_dplane_result dplane_intf_addr_unset(const struct interface *ifp,
 						const struct connected *ifc)
 {
-	return intf_addr_update_internal(ifp, ifc, DPLANE_OP_ADDR_UNINSTALL);
+	return intf_addr_update_internal(ifp, ifc, DPLANE_OP_ADDR_UNINSTALL, false);
 }
 
-static enum zebra_dplane_result intf_addr_update_internal(
-	const struct interface *ifp, const struct connected *ifc,
-	enum dplane_op_e op)
+static enum zebra_dplane_result intf_addr_update_internal(const struct interface *ifp,
+							  const struct connected *ifc,
+							  enum dplane_op_e op, bool skip_kernel)
 {
 	enum zebra_dplane_result result = ZEBRA_DPLANE_REQUEST_FAILURE;
 	int ret = EINVAL;
@@ -5415,6 +5426,9 @@ static enum zebra_dplane_result intf_addr_update_internal(
 	ctx->zd_op = op;
 	ctx->zd_status = ZEBRA_DPLANE_REQUEST_SUCCESS;
 	ctx->zd_vrf_id = ifp->vrf->vrf_id;
+
+	if (skip_kernel)
+		dplane_ctx_set_skip_kernel(ctx);
 
 	zns = zebra_ns_lookup(ifp->vrf->vrf_id);
 	dplane_ctx_ns_init(ctx, zns, false);
@@ -5481,8 +5495,8 @@ static enum zebra_dplane_result intf_addr_update_internal(
  *
  * Return:	Result of the change
  */
-static enum zebra_dplane_result
-dplane_intf_update_internal(const struct interface *ifp, enum dplane_op_e op)
+static enum zebra_dplane_result dplane_intf_update_internal(const struct interface *ifp,
+							    enum dplane_op_e op, bool skip_kernel)
 {
 	enum zebra_dplane_result result = ZEBRA_DPLANE_REQUEST_FAILURE;
 	int ret;
@@ -5494,6 +5508,9 @@ dplane_intf_update_internal(const struct interface *ifp, enum dplane_op_e op)
 	ret = dplane_ctx_intf_init(ctx, op, ifp);
 	if (ret == AOK)
 		ret = dplane_update_enqueue(ctx);
+
+	if (skip_kernel)
+		dplane_ctx_set_skip_kernel(ctx);
 
 	/* Update counter */
 	atomic_fetch_add_explicit(&zdplane_info.dg_intfs_in, 1,
@@ -5519,7 +5536,7 @@ enum zebra_dplane_result dplane_intf_add(const struct interface *ifp)
 	enum zebra_dplane_result ret = ZEBRA_DPLANE_REQUEST_FAILURE;
 
 	if (ifp)
-		ret = dplane_intf_update_internal(ifp, DPLANE_OP_INTF_INSTALL);
+		ret = dplane_intf_update_internal(ifp, DPLANE_OP_INTF_INSTALL, false);
 	return ret;
 }
 
@@ -5531,7 +5548,20 @@ enum zebra_dplane_result dplane_intf_update(const struct interface *ifp)
 	enum zebra_dplane_result ret = ZEBRA_DPLANE_REQUEST_FAILURE;
 
 	if (ifp)
-		ret = dplane_intf_update_internal(ifp, DPLANE_OP_INTF_UPDATE);
+		ret = dplane_intf_update_internal(ifp, DPLANE_OP_INTF_UPDATE, false);
+	return ret;
+}
+
+/*
+ * Enqueue a interface refresh for the dataplane. This is identical to dplane_intf_update()
+ * except that the ctx is flagged with skip kernel.
+ */
+enum zebra_dplane_result dplane_intf_refresh(const struct interface *ifp)
+{
+	enum zebra_dplane_result ret = ZEBRA_DPLANE_REQUEST_FAILURE;
+
+	if (ifp)
+		ret = dplane_intf_update_internal(ifp, DPLANE_OP_INTF_UPDATE, true);
 	return ret;
 }
 
