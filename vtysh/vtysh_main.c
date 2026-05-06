@@ -42,6 +42,7 @@
 
 #include "vtysh/vtysh.h"
 #include "vtysh/vtysh_user.h"
+#include "vtysh/vtysh_extensions.h"
 
 /* VTY shell program name. */
 char *progname;
@@ -282,6 +283,7 @@ struct option longopts[] = {
 	{"timestamp", no_argument, NULL, 't'},
 	{"no-fork", no_argument, NULL, OPTION_NOFORK},
 	{"exec-timeout", required_argument, NULL, OPTION_TIMEOUT},
+	{"extension", required_argument, NULL, 'X'},
 	{0}};
 
 bool vtysh_loop_exited;
@@ -394,6 +396,7 @@ void suid_off(void)
 	}
 }
 
+
 /* VTY shell main routine. */
 int main(int argc, char **argv, char **env)
 {
@@ -447,7 +450,7 @@ int main(int argc, char **argv, char **env)
 
 	/* Option handling. */
 	while (1) {
-		opt = getopt_long(argc, argv, "be:c:d:nf:H:mEhCwN:ut", longopts,
+		opt = getopt_long(argc, argv, "be:c:d:nf:H:mEhCwN:utX:", longopts,
 				  0);
 
 		if (opt == EOF)
@@ -531,6 +534,9 @@ int main(int argc, char **argv, char **env)
 				exit(1);
 			}
 			break;
+		case 'X':
+		    vtysh_register_extension(optarg);
+		    break;
 		default:
 			usage(1);
 			break;
@@ -578,6 +584,7 @@ int main(int argc, char **argv, char **env)
 	vtysh_config_init();
 
 	vty_init_vtysh();
+	vtysh_load_extensions();
 
 	if (!user_mode) {
 		/* Read vtysh configuration file before connecting to daemons.
@@ -826,6 +833,7 @@ int main(int argc, char **argv, char **env)
 	vtysh_rl_run();
 
 	vtysh_uninit();
+	vtysh_unload_extensions();
 
 	history_truncate_file(history_file, 1000);
 	printf("\n");

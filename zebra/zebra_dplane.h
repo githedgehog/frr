@@ -214,6 +214,9 @@ enum dplane_op_e {
 
 	/* Source address for SRv6 encapsulation */
 	DPLANE_OP_SRV6_ENCAP_SRCADDR_SET,
+
+	/* Refresh provider */
+	DPLANE_OP_PROVIDER_REFRESH
 };
 
 /* Operational status of Bridge Ports */
@@ -222,6 +225,7 @@ enum dplane_op_e {
 #define ZEBRA_DPLANE_BR_STATE_LEARNING	 0x04
 #define ZEBRA_DPLANE_BR_STATE_FORWARDING 0x08
 #define ZEBRA_DPLANE_BR_STATE_BLOCKING	 0x10
+
 
 /*
  * The vxlan/evpn neighbor management code needs some values to use
@@ -257,6 +261,17 @@ enum dplane_op_e {
 #define DPLANE_NEIGH_NO_EXTENSION (1 << 4)
 
 #define DPLANE_BR_PORT_NON_DF (1 << 0)
+
+/* Refresh bitmap bits: indicate what to refresh  */
+#define DPLANE_REFRESH_RIB	  (1 << 0)
+#define DPLANE_REFRESH_L3VNI_RMAC (1 << 1)
+#define DPLANE_REFRESH_INTERFACES (1 << 2)
+#define DPLANE_REFRESH_IFADDRS	  (1 << 3)
+#define DPLANE_REFRESH_LSPS	  (1 << 4)
+#define DPLANE_REFRESH_ALL                                                                        \
+	(DPLANE_REFRESH_RIB | DPLANE_REFRESH_L3VNI_RMAC | DPLANE_REFRESH_INTERFACES |             \
+	 DPLANE_REFRESH_IFADDRS | DPLANE_REFRESH_LSPS)
+
 
 /* Definitions for the dplane 'netconf' apis, corresponding to the netlink
  * NETCONF api.
@@ -437,6 +452,8 @@ uint8_t dplane_ctx_get_ifp_family(const struct zebra_dplane_ctx *ctx);
 struct zebra_vxlan_vni_array;
 void dplane_ctx_set_ifp_vxlan_vni_array(struct zebra_dplane_ctx *ctx,
 					struct zebra_vxlan_vni_array *vniarray);
+
+uint32_t dplane_ctx_get_refresh_flags(struct zebra_dplane_ctx *ctx);
 
 /*
  * These defines mirror the values for bridge values in linux
@@ -959,12 +976,14 @@ enum zebra_dplane_result dplane_intf_addr_set(const struct interface *ifp,
 					      const struct connected *ifc);
 enum zebra_dplane_result dplane_intf_addr_unset(const struct interface *ifp,
 						const struct connected *ifc);
-
+enum zebra_dplane_result dplane_intf_addr_refresh(const struct interface *ifp,
+						  const struct connected *ifc);
 /*
  * Enqueue interface link changes for the dataplane.
  */
 enum zebra_dplane_result dplane_intf_add(const struct interface *ifp);
 enum zebra_dplane_result dplane_intf_update(const struct interface *ifp);
+enum zebra_dplane_result dplane_intf_refresh(const struct interface *ifp);
 
 /*
  * Enqueue tc link changes for the dataplane.
@@ -1311,6 +1330,8 @@ void zebra_dplane_shutdown(void);
 
 void zebra_dplane_startup_stage(struct zebra_ns *zns,
 				enum zebra_dplane_startup_notifications spot);
+
+void zebra_dplane_provider_refresh(uint32_t zd_provider, uint32_t refresh_flags);
 
 enum zebra_dplane_startup_notifications
 dplane_ctx_get_startup_spot(struct zebra_dplane_ctx *ctx);
