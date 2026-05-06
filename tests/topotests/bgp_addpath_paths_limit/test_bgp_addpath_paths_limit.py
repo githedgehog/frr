@@ -104,6 +104,25 @@ def test_bgp_addpath_paths_limit():
     _, result = topotest.run_and_expect(test_func, None, count=30, wait=1)
     assert result is None, "Can't converge initially"
 
+    def _bgp_check_advertised_routes(neighbor, total_prefixes, total_paths):
+        output = json.loads(
+            r2.vtysh_cmd(f"show ip bgp neighbors {neighbor} advertised-routes json")
+        )
+        expected = {
+            "totalPrefixCounter": total_prefixes,
+            "totalPathsCount": total_paths,
+        }
+
+        return topotest.json_cmp(output, expected)
+
+    test_func = functools.partial(_bgp_check_advertised_routes, "192.168.7.7", 3, 12)
+    _, result = topotest.run_and_expect(test_func, None, count=30, wait=1)
+    assert result is None, "Advertised routes count for 192.168.7.7 is not as expected"
+
+    test_func = functools.partial(_bgp_check_advertised_routes, "192.168.2.6", 2, 2)
+    _, result = topotest.run_and_expect(test_func, None, count=30, wait=1)
+    assert result is None, "Advertised routes count for 192.168.2.6 is not as expected"
+
     def _bgp_check_received_routes(router, expected):
         output = json.loads(
             router.vtysh_cmd("show bgp ipv4 unicast 172.16.16.254/32 json")
@@ -121,6 +140,43 @@ def test_bgp_addpath_paths_limit():
     test_func = functools.partial(_bgp_check_received_routes, r7, 3)
     _, result = topotest.run_and_expect(test_func, None, count=30, wait=1)
     assert result is None, "Received routes count is not as expected"
+
+
+def test_bgp_pathcount_json():
+    """
+    Test to verify the pathCount key exists in BGP JSON output and has correct values
+    """
+    tgen = get_topogen()
+
+    if tgen.routers_have_failure():
+        pytest.skip(tgen.errors)
+
+    r1 = tgen.gears["r1"]
+    r7 = tgen.gears["r7"]
+
+    def _bgp_check_path_count(router, expected_count):
+        output = json.loads(
+            router.vtysh_cmd("show bgp ipv4 unicast 172.16.16.254/32 json")
+        )
+
+        if "pathCount" not in output:
+            return "pathCount key not found in JSON output"
+
+        return topotest.json_cmp(output["pathCount"], expected_count)
+
+    # Check pathCount for r1 (should be 2)
+    test_func = functools.partial(_bgp_check_path_count, r1, 2)
+    _, result = topotest.run_and_expect(test_func, None, count=30, wait=1)
+    assert (
+        result is None
+    ), "pathCount in JSON output doesn't match expected value for r1"
+
+    # Check pathCount for r7 (should be 3)
+    test_func = functools.partial(_bgp_check_path_count, r7, 3)
+    _, result = topotest.run_and_expect(test_func, None, count=30, wait=1)
+    assert (
+        result is None
+    ), "pathCount in JSON output doesn't match expected value for r7"
 
 
 if __name__ == "__main__":

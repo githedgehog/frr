@@ -7,6 +7,7 @@
 #define _FRR_MONOTIME_H
 
 #include <stdint.h>
+#include <string.h>
 #include <time.h>
 #include <sys/time.h>
 

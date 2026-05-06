@@ -35,6 +35,7 @@
 #include "bgpd/bgp_vty.h"
 #include "bgpd/bgp_flowspec.h"
 #include "bgpd/bgp_packet.h"
+#include "bgpd/bgp_nhc.h"
 
 #include "bgpd/bgp_debug_clippy.c"
 
@@ -185,6 +186,8 @@ static const struct message bgp_notify_fsm_msg[] = {
 const char *const bgp_origin_str[] = {"i", "e", "?"};
 const char *const bgp_origin_long_str[] = {"IGP", "EGP", "incomplete"};
 
+const char *const bgp_global_gr_mode_str[] = { "Helper", "Restarter", "Disabled", "Invalid" };
+
 static void bgp_debug_print_evpn_prefix(struct vty *vty, const char *desc,
 					struct prefix *p);
 /* Given a string return a pointer the corresponding peer structure */
@@ -252,13 +255,13 @@ static void bgp_debug_list_print(struct vty *vty, const char *desc,
 			if (filter->p && filter->p->family == AF_EVPN)
 				bgp_debug_print_evpn_prefix(vty, "", filter->p);
 			else if (filter->p)
-				vty_out(vty, " %pFX", filter->p);
+				vty_out(vty, "   %pFX", filter->p);
 
 			vty_out(vty, "\n");
 		}
+	} else {
+		vty_out(vty, "\n");
 	}
-
-	vty_out(vty, "\n");
 }
 
 /*
@@ -402,10 +405,10 @@ bool bgp_dump_attr(struct attr *attr, char *buf, size_t size)
 
 	buf[0] = '\0';
 
-	if (CHECK_FLAG(attr->flag, ATTR_FLAG_BIT(BGP_ATTR_NEXT_HOP)))
+	if (bgp_attr_exists(attr, BGP_ATTR_NEXT_HOP))
 		snprintfrr(buf, size, "nexthop %pI4", &attr->nexthop);
 
-	if (CHECK_FLAG(attr->flag, ATTR_FLAG_BIT(BGP_ATTR_ORIGIN)))
+	if (bgp_attr_exists(attr, BGP_ATTR_ORIGIN))
 		snprintf(buf + strlen(buf), size - strlen(buf), ", origin %s",
 			 bgp_origin_str[attr->origin]);
 
@@ -422,54 +425,54 @@ bool bgp_dump_attr(struct attr *attr, char *buf, size_t size)
 	if (attr->mp_nexthop_len == BGP_ATTR_NHLEN_IPV4)
 		snprintfrr(buf, size, "nexthop %pI4", &attr->nexthop);
 
-	if (CHECK_FLAG(attr->flag, ATTR_FLAG_BIT(BGP_ATTR_LOCAL_PREF)))
+	if (bgp_attr_exists(attr, BGP_ATTR_LOCAL_PREF))
 		snprintf(buf + strlen(buf), size - strlen(buf),
 			 ", localpref %u", attr->local_pref);
 
-	if (CHECK_FLAG(attr->flag, ATTR_FLAG_BIT(BGP_ATTR_AIGP)))
+	if (bgp_attr_exists(attr, BGP_ATTR_AIGP))
 		snprintf(buf + strlen(buf), size - strlen(buf),
 			 ", aigp-metric %" PRIu64,
 			 (unsigned long long)bgp_attr_get_aigp_metric(attr));
 
-	if (CHECK_FLAG(attr->flag, ATTR_FLAG_BIT(BGP_ATTR_MULTI_EXIT_DISC)))
+	if (bgp_attr_exists(attr, BGP_ATTR_MULTI_EXIT_DISC))
 		snprintf(buf + strlen(buf), size - strlen(buf), ", metric %u",
 			 attr->med);
 
-	if (CHECK_FLAG(attr->flag, ATTR_FLAG_BIT(BGP_ATTR_COMMUNITIES)))
+	if (bgp_attr_exists(attr, BGP_ATTR_COMMUNITIES))
 		snprintf(buf + strlen(buf), size - strlen(buf),
 			 ", community %s",
 			 community_str(bgp_attr_get_community(attr), false,
 				       true));
 
-	if (CHECK_FLAG(attr->flag, ATTR_FLAG_BIT(BGP_ATTR_LARGE_COMMUNITIES)))
+	if (bgp_attr_exists(attr, BGP_ATTR_LARGE_COMMUNITIES))
 		snprintf(buf + strlen(buf), size - strlen(buf),
 			 ", large-community %s",
 			 lcommunity_str(bgp_attr_get_lcommunity(attr), false,
 					true));
 
-	if (CHECK_FLAG(attr->flag, ATTR_FLAG_BIT(BGP_ATTR_EXT_COMMUNITIES)))
+	if (bgp_attr_exists(attr, BGP_ATTR_EXT_COMMUNITIES))
 		snprintf(buf + strlen(buf), size - strlen(buf),
 			 ", extcommunity %s",
 			 ecommunity_str(bgp_attr_get_ecommunity(attr)));
 
-	if (CHECK_FLAG(attr->flag, ATTR_FLAG_BIT(BGP_ATTR_IPV6_EXT_COMMUNITIES)))
+	if (bgp_attr_exists(attr, BGP_ATTR_IPV6_EXT_COMMUNITIES))
 		snprintf(buf + strlen(buf), size - strlen(buf), ", ipv6-extcommunity %s",
 			 ecommunity_str(bgp_attr_get_ipv6_ecommunity(attr)));
 
-	if (CHECK_FLAG(attr->flag, ATTR_FLAG_BIT(BGP_ATTR_ATOMIC_AGGREGATE)))
+	if (bgp_attr_exists(attr, BGP_ATTR_ATOMIC_AGGREGATE))
 		snprintf(buf + strlen(buf), size - strlen(buf),
 			 ", atomic-aggregate");
 
-	if (CHECK_FLAG(attr->flag, ATTR_FLAG_BIT(BGP_ATTR_AGGREGATOR)))
+	if (bgp_attr_exists(attr, BGP_ATTR_AGGREGATOR))
 		snprintfrr(buf + strlen(buf), size - strlen(buf),
 			   ", aggregated by %u %pI4", attr->aggregator_as,
 			   &attr->aggregator_addr);
 
-	if (CHECK_FLAG(attr->flag, ATTR_FLAG_BIT(BGP_ATTR_ORIGINATOR_ID)))
+	if (bgp_attr_exists(attr, BGP_ATTR_ORIGINATOR_ID))
 		snprintfrr(buf + strlen(buf), size - strlen(buf),
 			   ", originator %pI4", &attr->originator_id);
 
-	if (CHECK_FLAG(attr->flag, ATTR_FLAG_BIT(BGP_ATTR_CLUSTER_LIST))) {
+	if (bgp_attr_exists(attr, BGP_ATTR_CLUSTER_LIST)) {
 		struct cluster_list *cluster;
 		int i;
 
@@ -482,18 +485,28 @@ bool bgp_dump_attr(struct attr *attr, char *buf, size_t size)
 				   " %pI4", &cluster->list[i]);
 	}
 
-	if (CHECK_FLAG(attr->flag, ATTR_FLAG_BIT(BGP_ATTR_PMSI_TUNNEL)))
+	if (bgp_attr_exists(attr, BGP_ATTR_PMSI_TUNNEL))
 		snprintf(buf + strlen(buf), size - strlen(buf),
 			 ", pmsi tnltype %u", bgp_attr_get_pmsi_tnl_type(attr));
 
-	if (CHECK_FLAG(attr->flag, ATTR_FLAG_BIT(BGP_ATTR_AS_PATH)))
+	if (bgp_attr_exists(attr, BGP_ATTR_AS_PATH))
 		snprintf(buf + strlen(buf), size - strlen(buf), ", path %s",
 			 aspath_print(attr->aspath));
 
-	if (CHECK_FLAG(attr->flag, ATTR_FLAG_BIT(BGP_ATTR_PREFIX_SID))) {
+	if (bgp_attr_exists(attr, BGP_ATTR_PREFIX_SID)) {
 		if (attr->label_index != BGP_INVALID_LABEL_INDEX)
 			snprintf(buf + strlen(buf), size - strlen(buf),
 				 ", label-index %u", attr->label_index);
+	}
+
+	if (bgp_attr_exists(attr, BGP_ATTR_NHC)) {
+		struct bgp_nhc_tlv *tlv;
+		struct bgp_nhc *nhc = bgp_attr_get_nhc(attr);
+
+		for (tlv = nhc->tlvs; tlv; tlv = tlv->next)
+			snprintf(buf + strlen(buf), size - strlen(buf),
+				 ", NHC TLV code %d length %d value %p", tlv->code, tlv->length,
+				 tlv->value);
 	}
 
 	if (strlen(buf) > 1)
@@ -552,7 +565,7 @@ const char *bgp_notify_admin_message(char *buf, size_t bufsz, uint8_t *data,
 }
 
 /* dump notify packet */
-void bgp_notify_print(struct peer *peer, struct bgp_notify *bgp_notify,
+void bgp_notify_print(const struct peer *peer, const struct bgp_notify *bgp_notify,
 		      const char *direct, bool hard_reset)
 {
 	const char *subcode_str;
@@ -637,8 +650,9 @@ static void bgp_debug_print_evpn_prefix(struct vty *vty, const char *desc,
 		}
 	} else if (p->u.prefix_evpn.route_type == BGP_EVPN_IMET_ROUTE) {
 		snprintfrr(evpn_desc, sizeof(evpn_desc),
-			   "l2vpn evpn type multicast ip %pI4",
-			   &p->u.prefix_evpn.imet_addr.ip.ipaddr_v4);
+			   "l2vpn evpn type multicast ip %pIA",
+			   &p->u.prefix_evpn.imet_addr.ip);
+
 	} else if (p->u.prefix_evpn.route_type == BGP_EVPN_IP_PREFIX_ROUTE) {
 		uint8_t family = is_evpn_prefix_ipaddr_v4(
 					(struct prefix_evpn *)p) ? AF_INET
@@ -693,7 +707,7 @@ static int bgp_debug_parse_evpn_prefix(struct vty *vty, struct cmd_token **argv,
 			}
 
 		build_evpn_type3_prefix((struct prefix_evpn *)argv_p,
-					ip.ipaddr_v4);
+					&ip);
 	} else if (evpn_type == BGP_EVPN_IP_PREFIX_ROUTE) {
 		struct prefix ip_prefix;
 
@@ -805,6 +819,31 @@ DEFUN (debug_bgp_neighbor_events,
 	return CMD_SUCCESS;
 }
 
+DEFPY(debug_bgp_neighbor_events_detail,
+      debug_bgp_neighbor_events_detail_cmd,
+      "[no] debug bgp neighbor-events detail",
+      NO_STR
+      DEBUG_STR
+      BGP_STR
+      "BGP Neighbor Events\n"
+      "Show detailed information about neighbor events\n")
+{
+	if (vty->node == CONFIG_NODE) {
+		if (no)
+			DEBUG_OFF(neighbor_events, NEIGHBOR_EVENTS_DETAIL);
+		else
+			DEBUG_ON(neighbor_events, NEIGHBOR_EVENTS_DETAIL);
+	} else {
+		if (no)
+			TERM_DEBUG_OFF(neighbor_events, NEIGHBOR_EVENTS_DETAIL);
+		else
+			TERM_DEBUG_ON(neighbor_events, NEIGHBOR_EVENTS_DETAIL);
+		vty_out(vty, "BGP neighbor-events detail debugging is %s\n", (no) ? "off" : "on");
+	}
+
+	return CMD_SUCCESS;
+}
+
 DEFUN (debug_bgp_neighbor_events_peer,
        debug_bgp_neighbor_events_peer_cmd,
        "debug bgp neighbor-events <A.B.C.D|X:X::X:X|WORD>",
@@ -852,10 +891,12 @@ DEFUN (no_debug_bgp_neighbor_events,
 {
 	bgp_debug_list_free(bgp_debug_neighbor_events_peers);
 
-	if (vty->node == CONFIG_NODE)
+	if (vty->node == CONFIG_NODE) {
 		DEBUG_OFF(neighbor_events, NEIGHBOR_EVENTS);
-	else {
+		DEBUG_OFF(neighbor_events, NEIGHBOR_EVENTS_DETAIL);
+	} else {
 		TERM_DEBUG_OFF(neighbor_events, NEIGHBOR_EVENTS);
+		TERM_DEBUG_OFF(neighbor_events, NEIGHBOR_EVENTS_DETAIL);
 		vty_out(vty, "BGP neighbor-events debugging is off\n");
 	}
 	return CMD_SUCCESS;
@@ -2205,9 +2246,11 @@ DEFPY(debug_bgp_bfd, debug_bgp_bfd_cmd,
 		if (no) {
 			TERM_DEBUG_OFF(bfd, BFD_LIB);
 			bfd_protocol_integration_set_debug(false);
+			vty_out(vty, "BGP BFD debugging is off\n");
 		} else {
 			TERM_DEBUG_ON(bfd, BFD_LIB);
 			bfd_protocol_integration_set_debug(true);
+			vty_out(vty, "BGP BFD debugging is on\n");
 		}
 	}
 
@@ -2270,6 +2313,7 @@ DEFUN (no_debug_bgp,
 	TERM_DEBUG_OFF(as4, AS4);
 	TERM_DEBUG_OFF(as4, AS4_SEGMENT);
 	TERM_DEBUG_OFF(neighbor_events, NEIGHBOR_EVENTS);
+	TERM_DEBUG_OFF(neighbor_events, NEIGHBOR_EVENTS_DETAIL);
 	TERM_DEBUG_OFF(zebra, ZEBRA);
 	TERM_DEBUG_OFF(nht, NHT);
 	TERM_DEBUG_OFF(vpn, VPN_LEAK_FROM_VRF);
@@ -2318,6 +2362,9 @@ DEFUN_NOSH (show_debugging_bgp,
 		bgp_debug_list_print(vty,
 				     "  BGP neighbor-events debugging is on",
 				     bgp_debug_neighbor_events_peers);
+
+	if (BGP_DEBUG(neighbor_events, NEIGHBOR_EVENTS_DETAIL))
+		vty_out(vty, "  BGP neighbor-events detail debugging is on\n");
 
 	if (BGP_DEBUG(nht, NHT))
 		vty_out(vty, "  BGP next-hop tracking debugging is on\n");
@@ -2417,6 +2464,11 @@ static int bgp_config_write_debug(struct vty *vty)
 		write += bgp_debug_list_conf_print(
 			vty, "debug bgp neighbor-events",
 			bgp_debug_neighbor_events_peers);
+	}
+
+	if (CONF_BGP_DEBUG(neighbor_events, NEIGHBOR_EVENTS_DETAIL)) {
+		vty_out(vty, "debug bgp neighbor-events detail\n");
+		write++;
 	}
 
 	if (CONF_BGP_DEBUG(nht, NHT)) {
@@ -2557,6 +2609,8 @@ void bgp_debug_init(void)
 
 	install_element(ENABLE_NODE, &debug_bgp_neighbor_events_cmd);
 	install_element(CONFIG_NODE, &debug_bgp_neighbor_events_cmd);
+	install_element(ENABLE_NODE, &debug_bgp_neighbor_events_detail_cmd);
+	install_element(CONFIG_NODE, &debug_bgp_neighbor_events_detail_cmd);
 	install_element(ENABLE_NODE, &debug_bgp_nht_cmd);
 	install_element(CONFIG_NODE, &debug_bgp_nht_cmd);
 	install_element(ENABLE_NODE, &debug_bgp_keepalive_cmd);
@@ -2910,11 +2964,7 @@ const char *bgp_debug_rdpfxpath2str(afi_t afi, safi_t safi,
 			snprintf(tag_buf, sizeof(tag_buf), " label %s",
 				 tag_buf2);
 		} else {
-			uint32_t label_value;
-
-			label_value = decode_label(label);
-			snprintf(tag_buf, sizeof(tag_buf), " label %u",
-				 label_value);
+			mpls_labels2str(label, num_labels, " label ", tag_buf, sizeof(tag_buf));
 		}
 	}
 

@@ -15,6 +15,7 @@
 #include "pim_bsm.h"
 #include "pim_vxlan_instance.h"
 #include "pim_oil.h"
+#include "pim_routemap.h"
 #include "pim_upstream.h"
 #include "pim_mroute.h"
 #include "pim_autorp.h"
@@ -62,7 +63,9 @@ enum pim_mlag_flags {
 	/* initial dump of data done post peerlink flap */
 	PIM_MLAGF_PEER_REPLAY_DONE = (1 << 3),
 	/* zebra is up on the peer */
-	PIM_MLAGF_PEER_ZEBRA_UP = (1 << 4)
+	PIM_MLAGF_PEER_ZEBRA_UP = (1 << 4),
+	/* Local MLAGD session is not up*/
+	PIM_MLAGF_PEER_ZEBRA_UP_NOTIFY_RECEIVE_PENDING = (1 << 5)
 };
 
 struct pim_router {
@@ -71,6 +74,7 @@ struct pim_router {
 	uint32_t debugs;
 
 	int t_periodic;
+	int t_prune_limit;
 	struct pim_assert_metric infinite_assert_metric;
 	long rpf_cache_refresh_delay_msec;
 	uint32_t register_suppress_time;
@@ -119,11 +123,12 @@ struct pim_instance {
 	struct hash *nht_hash;
 	struct pim_lookup_mode_head rpf_mode;
 
-	void *ssm_info; /* per-vrf SSM configuration */
+	struct pim_ssm *ssm_info; /* per-vrf SSM configuration */
+	struct pim_dm *dm_info;	  /* per-vrf DM configuration */
 
 	int send_v6_secondary;
 
-	struct event *thread;
+	struct event *event;
 	int mroute_socket;
 	int reg_sock; /* Socket to send register msg */
 	int64_t mroute_socket_creation;
@@ -170,6 +175,10 @@ struct pim_instance {
 	unsigned int gm_watermark_limit;
 	unsigned int keep_alive_time;
 	unsigned int rp_keep_alive_time;
+	unsigned int staterefresh_time;
+
+	uint8_t staterefresh_counter;
+
 
 	bool ecmp_enable;
 	bool ecmp_rebalance_enable;
@@ -202,6 +211,9 @@ struct pim_instance {
 #define PIM_MSDP_LOG_NEIGHBOR_EVENTS 0x01
 /** Log SA event messages. */
 #define PIM_MSDP_LOG_SA_EVENTS 0x02
+
+	/* Filter on received PIM joins */
+	struct pim_filter_ref join_filter;
 
 	bool stopping;
 

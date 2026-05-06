@@ -65,7 +65,7 @@ static void sighup(void)
 }
 
 /* SIGINT / SIGTERM handler. */
-static void sigint(void)
+static FRR_NORETURN void sigint(void)
 {
 	zlog_notice("Terminating on signal");
 
@@ -111,19 +111,21 @@ struct frr_signal_t static_signals[] = {
 	},
 };
 
+/* clang-format off */
 static const struct frr_yang_module_info *const staticd_yang_modules[] = {
 	&frr_backend_info,
 	&frr_interface_info,
 	&frr_vrf_info,
 	&frr_routing_info,
 	&frr_staticd_info,
+	&ietf_srv6_types_info,
 };
 
 /*
  * NOTE: .flags == FRR_NO_SPLIT_CONFIG to avoid reading split config, mgmtd will
  * do this for us now
  */
-/* clang-format off */
+
 FRR_DAEMON_INFO(staticd, STATIC,
 	.vty_port = STATIC_VTY_PORT,
 	.proghelp = "Implementation of STATIC.",
@@ -136,8 +138,33 @@ FRR_DAEMON_INFO(staticd, STATIC,
 	.yang_modules = staticd_yang_modules,
 	.n_yang_modules = array_size(staticd_yang_modules),
 
-	.flags = FRR_NO_SPLIT_CONFIG,
+	.flags = FRR_NO_SPLIT_CONFIG | FRR_MGMTD_BACKEND,
 );
+
+static const char *const staticd_config_xpaths[] = {
+	"/frr-host:host",
+	"/frr-logging:logging",
+	"/frr-vrf:lib",
+	"/frr-interface:lib",
+	"/frr-routing:routing/control-plane-protocols/control-plane-protocol/frr-staticd:staticd",
+};
+
+static const char *const staticd_oper_xpaths[] = {
+	"/frr-backend:clients",
+};
+
+static const char *const staticd_rpc_xpaths[] = {
+	"/frr-logging",
+};
+
+struct mgmt_be_client_cbs staticd_be_client_data = {
+	.config_xpaths = staticd_config_xpaths,
+	.nconfig_xpaths = array_size(staticd_config_xpaths),
+	.oper_xpaths = staticd_oper_xpaths,
+	.noper_xpaths = array_size(staticd_oper_xpaths),
+	.rpc_xpaths = staticd_rpc_xpaths,
+	.nrpc_xpaths = array_size(staticd_rpc_xpaths),
+};
 /* clang-format on */
 
 int main(int argc, char **argv, char **envp)
@@ -173,7 +200,7 @@ int main(int argc, char **argv, char **envp)
 	static_vty_init();
 
 	/* Initialize MGMT backend functionalities */
-	mgmt_be_client = mgmt_be_client_create("staticd", NULL, 0, master);
+	mgmt_be_client = mgmt_be_client_create("staticd", &staticd_be_client_data, 0, master);
 
 	hook_register(routing_conf_event,
 		      routing_control_plane_protocols_name_validate);

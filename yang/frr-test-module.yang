@@ -139,5 +139,41 @@ module frr-test-module {
         }
       }
     }
+    choice bchoice {
+      description "a choice statement";
+      case case3 {
+        leaf c3value {
+          type uint8;
+          description "A uint8 value for case 3";
+        }
+      }
+      case case4 {
+        container c4cont {
+          description "case 2 container";
+          leaf c4value {
+            type uint32;
+            description "A uint32 value for case 4";
+          }
+        }
+      }
+    }
+  }
+  rpc rpc-no-args {
+    description "An rpc with no arguments.";
+  }
+  rpc rpc-both-args {
+    description "A rpc with both input and output arguments.";
+    input {
+      leaf data {
+        type string;
+        description "data input to rpc_no_output.";
+      }
+    }
+    output {
+      leaf result {
+        type string;
+        description "result of RPC.";
+      }
+    }
   }
 }

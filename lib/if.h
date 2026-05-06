@@ -79,6 +79,23 @@ enum zebra_link_type {
 	ZEBRA_LLT_IEEE802154_PHY,
 };
 
+/* interface type - ones of interest. */
+enum zebra_iftype {
+	ZEBRA_IF_OTHER = 0, /* Anything else */
+	ZEBRA_IF_VXLAN,	    /* VxLAN interface */
+	ZEBRA_IF_VRF,	    /* VRF device */
+	ZEBRA_IF_BRIDGE,    /* bridge device */
+	ZEBRA_IF_VLAN,	    /* VLAN sub-interface */
+	ZEBRA_IF_MACVLAN,   /* MAC VLAN interface*/
+	ZEBRA_IF_VETH,	    /* VETH interface*/
+	ZEBRA_IF_BOND,	    /* Bond */
+	ZEBRA_IF_GRE,	    /* GRE interface */
+	ZEBRA_IF_IP6GRE,    /* IP6GRE interface */
+	ZEBRA_IF_GRETAP,    /* GRETAP interface */
+	ZEBRA_IF_IP6GRETAP, /* IP6GRETAP interface */
+	ZEBRA_IF_DUMMY,	    /* Dummy interface */
+};
+
 /*
   Interface name length.
 
@@ -242,6 +259,7 @@ struct interface {
 #define ZEBRA_INTERFACE_SUB        (1 << 1)
 #define ZEBRA_INTERFACE_LINKDETECTION (1 << 2)
 #define ZEBRA_INTERFACE_VRF_LOOPBACK (1 << 3)
+#define ZEBRA_INTERFACE_DUMMY (1 << 4)
 
 	/* Interface flags. */
 	uint64_t flags;
@@ -263,6 +281,10 @@ struct interface {
 
 	/* Link-layer information and hardware address */
 	enum zebra_link_type ll_type;
+
+	/* Zebra interface type */
+	enum zebra_iftype zif_type;
+
 	uint8_t hw_addr[INTERFACE_HWADDR_MAX];
 	int hw_addr_len;
 
@@ -307,6 +329,8 @@ struct interface {
 
 	QOBJ_FIELDS;
 };
+
+extern int if_cmp_func(const struct interface *a, const struct interface *b);
 
 RB_HEAD(if_name_head, interface);
 RB_PROTOTYPE(if_name_head, interface, name_entry, if_cmp_func)

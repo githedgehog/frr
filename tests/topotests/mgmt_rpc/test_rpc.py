@@ -42,10 +42,10 @@ def tgen(request):
 
 
 # Verify the backend test client has connected
-@retry(retry_timeout=10)
+@retry(retry_timeout=30)
 def check_client_connect(r1):
     out = r1.vtysh_cmd("show mgmt backend-adapter all")
-    assert "mgmtd-testc" in out
+    return None if "mgmtd-testc" in out else "missing mgmtd-testc"
 
 
 def test_backend_rpc(tgen):

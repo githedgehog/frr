@@ -66,11 +66,11 @@ static const struct message eigrp_general_tlv_type_str[] = {
  * Sends hello packet via multicast for all interfaces eigrp
  * is configured for
  */
-void eigrp_hello_timer(struct event *thread)
+void eigrp_hello_timer(struct event *event)
 {
 	struct eigrp_interface *ei;
 
-	ei = EVENT_ARG(thread);
+	ei = EVENT_ARG(event);
 
 	if (IS_DEBUG_EIGRP(0, TIMERS))
 		zlog_debug("Start Hello Timer (%s) Expire [%u]", IF_NAME(ei),
@@ -107,7 +107,7 @@ eigrp_hello_parameter_decode(struct eigrp_neighbor *nbr,
 	struct TLV_Parameter_Type *param = (struct TLV_Parameter_Type *)tlv;
 
 	/* First validate TLV length */
-	if (tlv->length < sizeof(struct TLV_Parameter_Type))
+	if (ntohs(tlv->length) < sizeof(struct TLV_Parameter_Type))
 		return NULL;
 
 	/* copy over the values passed in by the neighbor */
@@ -179,16 +179,16 @@ eigrp_hello_authentication_decode(struct stream *s,
 
 	md5 = (struct TLV_MD5_Authentication_Type *)tlv_header;
 
-	if (md5->auth_type == EIGRP_AUTH_TYPE_MD5) {
+	if (ntohs(md5->auth_type) == EIGRP_AUTH_TYPE_MD5) {
 		/* Validate tlv length */
-		if (md5->length < sizeof(struct TLV_MD5_Authentication_Type))
+		if (ntohs(md5->length) < sizeof(struct TLV_MD5_Authentication_Type))
 			return 0;
 
 		return eigrp_check_md5_digest(s, md5, nbr,
 					      EIGRP_AUTH_BASIC_HELLO_FLAG);
-	} else if (md5->auth_type == EIGRP_AUTH_TYPE_SHA256) {
+	} else if (ntohs(md5->auth_type) == EIGRP_AUTH_TYPE_SHA256) {
 		/* Validate tlv length */
-		if (md5->length < sizeof(struct TLV_SHA256_Authentication_Type))
+		if (ntohs(md5->length) < sizeof(struct TLV_SHA256_Authentication_Type))
 			return 0;
 
 		return eigrp_check_sha256_digest(
@@ -218,7 +218,7 @@ static void eigrp_sw_version_decode(struct eigrp_neighbor *nbr,
 	struct TLV_Software_Type *version = (struct TLV_Software_Type *)tlv;
 
 	/* Validate TLV length */
-	if (tlv->length < sizeof(struct TLV_Software_Type))
+	if (ntohs(tlv->length) < sizeof(struct TLV_Software_Type))
 		return;
 
 	nbr->os_rel_major = version->vender_major;
@@ -249,7 +249,7 @@ static void eigrp_peer_termination_decode(struct eigrp_neighbor *nbr,
 		(struct TLV_Peer_Termination_type *)tlv;
 
 	/* Validate TLV length */
-	if (tlv->length < sizeof(struct TLV_Peer_Termination_type))
+	if (ntohs(tlv->length) < sizeof(struct TLV_Peer_Termination_type))
 		return;
 
 	uint32_t my_ip = nbr->ei->address.u.prefix4.s_addr;
@@ -339,7 +339,7 @@ void eigrp_hello_receive(struct eigrp *eigrp, struct ip *iph,
 			   &nbr->src);
 
 	size -= EIGRP_HEADER_LEN;
-	if (size < 0)
+	if (size < EIGRP_TLV_HDR_LENGTH)
 		return;
 
 	tlv_header = (struct eigrp_tlv_hdr_type *)eigrph->tlv;
@@ -348,11 +348,8 @@ void eigrp_hello_receive(struct eigrp *eigrp, struct ip *iph,
 		type = ntohs(tlv_header->type);
 		length = ntohs(tlv_header->length);
 
-		/* Validate length against packet size */
-		if (length > size)
-			return;
-
-		if ((length > 0) && (length <= size)) {
+		/* Validate tlv length: must be at least header size (4 bytes) */
+		if ((length >= EIGRP_TLV_HDR_LENGTH) && (length <= size)) {
 			if (IS_DEBUG_EIGRP_PACKET(0, RECV))
 				zlog_debug(
 					"  General TLV(%s)",
@@ -393,13 +390,15 @@ void eigrp_hello_receive(struct eigrp *eigrp, struct ip *iph,
 			default:
 				break;
 			}
+		} else {
+			return;
 		}
 
 		tlv_header = (struct eigrp_tlv_hdr_type *)(((char *)tlv_header)
 							   + length);
 		size -= length;
 
-	} while (size > 0);
+	} while (size >= EIGRP_TLV_HDR_LENGTH);
 
 
 	/*If received packet is hello with Parameter TLV*/
@@ -496,7 +495,6 @@ static uint16_t eigrp_sequence_encode(struct eigrp *eigrp, struct stream *s)
 {
 	uint16_t length = EIGRP_TLV_SEQ_BASE_LEN;
 	struct eigrp_interface *ei;
-	struct listnode *node, *node2, *nnode2;
 	struct eigrp_neighbor *nbr;
 	size_t backup_end, size_end;
 	int found;
@@ -509,8 +507,8 @@ static uint16_t eigrp_sequence_encode(struct eigrp *eigrp, struct stream *s)
 	stream_putc(s, IPV4_MAX_BYTELEN);
 
 	found = 0;
-	for (ALL_LIST_ELEMENTS_RO(eigrp->eiflist, node, ei)) {
-		for (ALL_LIST_ELEMENTS(ei->nbrs, node2, nnode2, nbr)) {
+	frr_each (eigrp_interface_hash, &eigrp->eifs, ei) {
+		frr_each (eigrp_nbr_hash, &ei->nbr_hash_head, nbr) {
 			if (nbr->multicast_queue->count > 0) {
 				length += (uint16_t)stream_put_ipv4(
 					s, nbr->src.s_addr);
@@ -671,7 +669,7 @@ static struct eigrp_packet *eigrp_hello_encode(struct eigrp_interface *ei,
 		// Set packet length
 		ep->length = length;
 
-		// set soruce address for the hello packet
+		/* set destination for the packet */
 		ep->dst.s_addr = addr;
 
 		if ((ei->params.auth_type == EIGRP_AUTH_TYPE_MD5)
